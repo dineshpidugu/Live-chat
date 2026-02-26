@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Live Chat</title>
+<style>
+    * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    html, body {
+        height: 100%;
+        background: #f0f2f5;
+    }
+
+    #chat-container {
+        display: flex;
+        flex-direction: column;
+        height: 100vh; /* Full screen */
+        width: 100%;
+        background: #fff;
+    }
+
+    #chat {
+        flex: 1;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        overflow-y: auto;
+        background: #e5ddd5;
+    }
+
+    .message {
+        padding: 10px 15px;
+        border-radius: 20px;
+        max-width: 70%;
+        word-wrap: break-word;
+        font-size: 14px;
+        line-height: 1.4;
+        display: inline-block;
+    }
+
+    .self {
+        background-color: #dcf8c6;
+        align-self: flex-end;
+    }
+
+    .other {
+        background-color: #fff;
+        align-self: flex-start;
+    }
+
+    .notification {
+        text-align: center;
+        font-size: 13px;
+        color: #555;
+        background: rgba(255,255,255,0.6);
+        padding: 5px 10px;
+        border-radius: 12px;
+        align-self: center;
+        font-style: italic;
+    }
+
+    #input-container {
+        display: flex;
+        padding: 10px;
+        background: #f0f0f0;
+        border-top: 1px solid #ccc;
+    }
+
+    #messageInput {
+        flex: 1;
+        padding: 12px 15px;
+        border: 1px solid #ccc;
+        border-radius: 20px;
+        font-size: 14px;
+        outline: none;
+        transition: border 0.3s;
+    }
+
+    #messageInput:focus {
+        border-color: #2575fc;
+    }
+
+    #sendBtn {
+        margin-left: 10px;
+        padding: 12px 20px;
+        background-color: #2575fc;
+        color: white;
+        border: none;
+        border-radius: 20px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: background 0.3s;
+    }
+
+    #sendBtn:hover {
+        background-color: #1a5edb;
+    }
+
+    /* Scrollbar styling */
+    #chat::-webkit-scrollbar {
+        width: 8px;
+    }
+    #chat::-webkit-scrollbar-thumb {
+        background-color: rgba(0,0,0,0.2);
+        border-radius: 4px;
+    }
+    #chat::-webkit-scrollbar-track {
+        background: transparent;
+    }
+</style>
+</head>
+<body>
+
+<div id="chat-container">
+    <div id="chat" class="wrapper">
+        {% for msg in messages %}
+            {% if msg.senderId == name %}
+                <div class="message self">{{ msg.message }}</div>
+            {% else %}
+                <div class="message other">{{ msg.senderId }}: {{ msg.message }}</div>
+            {% endif %}
+        {% endfor %}
+    </div>
+
+    <div id="input-container">
+        <input type="text" id="messageInput" placeholder="Type a message...">
+        <button id="sendBtn">Send</button>
+    </div>
+</div>
+
+<script>
+let myUsername = "{{ name }}";
+const chat = document.getElementById("chat");
+const input = document.getElementById("messageInput");
+const sendBtn = document.getElementById("sendBtn");
+
+const ws = new WebSocket((window.location.protocol==="https:"?"wss://":"ws://") + window.location.host + "/w/"+myUsername);
+
+ws.onopen = () => console.log("Connected");
+
+ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    if( data.type==="message"){
+    addMessage(data);}
+    else{
+        const msgDiv = document.createElement("div");
+        msgDiv.className = "notification";
+        msgDiv.textContent = data.name+" "+data.type+" the chat";
+        chat.appendChild(msgDiv);
+        chat.scrollTop = chat.scrollHeight;
+    }
+};
+
+function addMessage(data){
+    const msgDiv = document.createElement("div");
+    msgDiv.className = "message";
+
+    if(data.senderId === myUsername){
+        msgDiv.classList.add("self");
+        msgDiv.textContent = data.message;
+    } else {
+        msgDiv.classList.add("other");
+        msgDiv.textContent = `${data.senderId}: ${data.message}`;
+    }
+
+    chat.appendChild(msgDiv);
+    chat.scrollTop = chat.scrollHeight;
+}
+
+function sendMessage(){
+    const msg = input.value.trim();
+    if(!msg) return;
+    const messageData = { type:"message",senderId: myUsername, message: msg };
+    ws.send(JSON.stringify(messageData));
+    input.value = "";
+}
+
+sendBtn.addEventListener("click", sendMessage);
+input.addEventListener("keydown", (e) => {
+    if(e.key==="Enter"){ e.preventDefault(); sendMessage(); }
+});
+</script>
+
+</body>
+</html>

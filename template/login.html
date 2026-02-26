@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login</title>
+<style>
+    /* Reset some defaults */
+    * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    body {
+        height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: linear-gradient(135deg, #6a11cb, #2575fc);
+        color: #333;
+    }
+
+    .login-container {
+        background: #fff;
+        padding: 40px;
+        border-radius: 12px;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+        width: 300px;
+        text-align: center;
+    }
+
+    h2 {
+        margin-bottom: 20px;
+        color: #333;
+    }
+
+    input[type="text"] {
+        width: 100%;
+        padding: 12px 15px;
+        margin: 10px 0 20px 0;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        font-size: 16px;
+        transition: border 0.3s;
+    }
+
+    input[type="text"]:focus {
+        border-color: #2575fc;
+        outline: none;
+    }
+
+    button {
+        width: 100%;
+        padding: 12px;
+        background-color: #2575fc;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 16px;
+        cursor: pointer;
+        transition: background 0.3s;
+    }
+
+    button:hover {
+        background-color: #1a5edb;
+    }
+
+    /* Responsive */
+    @media (max-width: 400px) {
+        .login-container {
+            width: 90%;
+            padding: 30px;
+        }
+    }
+</style>
+</head>
+<body>
+<div class="login-container">
+    <h2>Login</h2>
+    <form action="/home" method="post">
+        <input type="text" name="id" id="id" placeholder="Enter your ID" required>
+        <button type="submit" id="submit">Enter</button>
+    </form>
+</div>
+</body>
+</html>
