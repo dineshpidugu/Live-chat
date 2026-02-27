@@ -1,10 +1,15 @@
-from fastapi import Depends, FastAPI, Form, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
+from fastapi import Depends, FastAPI, Form, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse,RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from database import engine, get_db
 from model import User, Base
+from starlette.middleware.sessions import SessionMiddleware
 app = FastAPI()
+app.add_middleware(
+    SessionMiddleware,
+    secret_key="abcd",
+)
 Base.metadata.create_all(bind=engine)
 
 # ---------- WebSocket Manager ----------
@@ -85,19 +90,30 @@ async def websocket_endpoint(websocket: WebSocket, name: str):
 
 
 # ---------- Login Page ----------
-@app.get("/")
-def login(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request})
+@app.get("/login")
+def login(request: Request,error: str=Query(None)):
+    user = request.session.get('user')
+    if user:
+        return RedirectResponse(url="/",status_code=303)
+    return templates.TemplateResponse("login.html", {"request": request,"error":error})
 
-
-# ---------- Home Page ----------
-@app.post("/home")
-def get_front(request: Request, id: str = Form(...), db: Session = Depends(get_db)):
-    id = int(id)
+@app.post("/login")
+def loginend(request:Request,id: int = Form(...), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.id == id).first()
     if not user:
-        return templates.TemplateResponse("login.html", {"request": request, "error": "User not found"})
-    return templates.TemplateResponse("front.html", {"request": request, "messages": messages, "name": user.name})
+        return RedirectResponse(
+            url="/login?error=User+not+found",
+            status_code=303
+        )
+    request.session['user']=user.name
+    return RedirectResponse(url="/",status_code=303)
+# ---------- Home Page ----------
+@app.get("/")
+def get_front(request: Request):
+    user=request.session.get('user')
+    if not user:
+        return RedirectResponse(url="/login",status_code=303)
+    return templates.TemplateResponse("front.html", {"request": request, "messages": messages, "name": user})
 
 
 # ---------- DevTools Dummy ----------
@@ -126,3 +142,9 @@ async def adduser(name: str, id: int, db: Session = Depends(get_db)):
 async def chatwithai(request: Request):
     
     return "Not Yet Updated(Will Be Soooon)"
+
+
+@app.get('/logout')
+def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse(url='/login',status_code=303)
