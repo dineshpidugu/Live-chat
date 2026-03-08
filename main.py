@@ -1,20 +1,30 @@
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
 from fastapi import Depends, FastAPI, Form, Query, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse,RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from database import engine, get_db
-from model import User, Base
+from model import User, Base,Chat
 from starlette.middleware.sessions import SessionMiddleware
+import redis.asyncio as redis
+import asyncio
+import json
+messages=[]
+# ---------- FastAPI App ----------
 app = FastAPI()
-app.add_middleware(
-    SessionMiddleware,
-    secret_key="abcd",
-)
+app.add_middleware(SessionMiddleware, secret_key="abcd")
 Base.metadata.create_all(bind=engine)
+templates = Jinja2Templates(directory="template")
+
+# ---------- Redis Setup ----------
+PUBSUB_CHANNEL = "chat_channel"
+redis_client = redis.from_url(os.getenv("REDIS_URL"), decode_responses=True)
 
 # ---------- WebSocket Manager ----------
-messages = []
-
 class ConnectionManager:
     def __init__(self):
         self.active_connections: dict[str, WebSocket] = {}
@@ -60,12 +70,32 @@ class ConnectionManager:
             "typing_users": list(self.typing_users)
         })
 
+    # Redis subscriber task
+    async def redis_subscriber(self):
+        pubsub = redis_client.pubsub()
+        await pubsub.subscribe(PUBSUB_CHANNEL)
+        async for message in pubsub.listen():
+            if message["type"] == "message":
+                data = json.loads(message["data"])
+                await self.broadcast(data)
+                # messages.append(data)
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(None, self.save_to_db, data)
 
+    def save_to_db(self, data: dict):
+        db: Session = next(get_db())
+        try:
+            new_user = Chat(content=data)
+            db.add(new_user)
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            print(f"Failed to save message: {e}")
+        finally:
+            db.close()
 manager = ConnectionManager()
-templates = Jinja2Templates(directory="template")
 
-
-# ---------- WebSocket ----------
+# ---------- WebSocket Endpoint ----------
 @app.websocket("/w/{name}")
 async def websocket_endpoint(websocket: WebSocket, name: str):
     await manager.connect(websocket, name)
@@ -74,54 +104,49 @@ async def websocket_endpoint(websocket: WebSocket, name: str):
             data = await websocket.receive_json()
 
             if data.get("type") == "typing":
-                # Handle typing indicator
                 await manager.set_typing(name, data.get("is_typing", False))
 
             elif data.get("type") == "message":
-                # Clear typing when message is sent
                 await manager.set_typing(name, False)
-                messages.append(data)
-                await manager.broadcast(data)
+                await redis_client.publish(PUBSUB_CHANNEL, json.dumps(data))
 
     except WebSocketDisconnect:
         manager.disconnect(name)
         await manager.broadcast({"type": "Left", "name": name})
         await manager.broadcast_members()
 
-
-# ---------- Login Page ----------
+# ---------- Login Pages ----------
 @app.get("/login")
-def login(request: Request,error: str=Query(None)):
-    user = request.session.get('user')
+def login(request: Request, error: str = Query(None)):
+    user = request.session.get("user")
     if user:
-        return RedirectResponse(url="/",status_code=303)
-    return templates.TemplateResponse("login.html", {"request": request,"error":error})
+        return RedirectResponse(url="/", status_code=303)
+    return templates.TemplateResponse("login.html", {"request": request, "error": error})
 
 @app.post("/login")
-def loginend(request:Request,id: int = Form(...), db: Session = Depends(get_db)):
+def loginend(request: Request, id: int = Form(...), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.id == id).first()
     if not user:
-        return RedirectResponse(
-            url="/login?error=User+not+found",
-            status_code=303
-        )
-    request.session['user']=user.name
-    return RedirectResponse(url="/",status_code=303)
+        return RedirectResponse(url="/login?error=User+not+found", status_code=303)
+    request.session["user"] = user.name
+    return RedirectResponse(url="/", status_code=303)
+
 # ---------- Home Page ----------
 @app.get("/")
-def get_front(request: Request):
-    user=request.session.get('user')
+def get_front(request: Request,db: Session = Depends(get_db)):
+    user = request.session.get("user")
     if not user:
-        return RedirectResponse(url="/login",status_code=303)
-    return templates.TemplateResponse("front.html", {"request": request, "messages": messages, "name": user})
-
-
-# ---------- DevTools Dummy ----------
-@app.get("/.well-known/appspecific/com.chrome.devtools.json")
-async def devtools_dummy():
-    return JSONResponse(content={})
-
-
+        return RedirectResponse(url="/login", status_code=303)
+    # messages: List[Chat] = db.query(Chat).order_by(Chat.id.asc()).limit(50).all()
+    contents: List[dict] = db.query(Chat.content).order_by(Chat.id.asc()).limit(50).all()
+    contents = [c[0] for c in contents]
+    return templates.TemplateResponse(
+        "front.html",
+        {
+            "request": request,
+            "messages": contents,
+            "name": user
+        })
 # ---------- Add User ----------
 @app.post("/adduser/{id}/{name}")
 async def adduser(name: str, id: int, db: Session = Depends(get_db)):
@@ -136,15 +161,29 @@ async def adduser(name: str, id: int, db: Session = Depends(get_db)):
     db.refresh(new_user)
     return JSONResponse(content={"id": new_user.id, "name": new_user.name, "message": "User added successfully"})
 
-
-# ---------- AI Chat ----------
-@app.post('/chatwithai')
+# ---------- AI Chat (dummy) ----------
+@app.post("/chatwithai")
 async def chatwithai(request: Request):
-    
-    return "Not Yet Updated(Will Be Soooon)"
+    return "Not Yet Updated (Will Be Soon)"
 
-
-@app.get('/logout')
+# ---------- Logout ----------
+@app.get("/logout")
 def logout(request: Request):
     request.session.clear()
-    return RedirectResponse(url='/login',status_code=303)
+    return RedirectResponse(url="/login", status_code=303)
+
+@app.get("/clear_chat", response_model=None)
+def clear_chat(db: Session = Depends(get_db)):
+    num_deleted = db.query(Chat).delete()
+    db.commit()
+    return {"message": f"Deleted {num_deleted} messages"}
+
+# ---------- DevTools Dummy ----------
+@app.get("/.well-known/appspecific/com.chrome.devtools.json")
+async def devtools_dummy():
+    return JSONResponse(content={})
+
+# ---------- Startup Event ----------
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(manager.redis_subscriber())
