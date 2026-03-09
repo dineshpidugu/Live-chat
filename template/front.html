@@ -1240,6 +1240,7 @@ ${aiHistory.map(m => `${m.role === 'user' ? myUsername : 'AI'}: ${m.content}`).j
 ---
 Now respond to: ${prompt}
 Be concise and friendly.`;
+    // console.log(fullPrompt)
 
     try {
         const res  = await fetch('/chatwithai', {

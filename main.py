@@ -13,7 +13,11 @@ from starlette.middleware.sessions import SessionMiddleware
 import redis.asyncio as redis
 import asyncio
 import json
-messages=[]
+from google import genai
+
+client = genai.Client()
+chat = client.chats.create(model="gemini-2.5-flash")
+
 # ---------- FastAPI App ----------
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key="abcd")
@@ -164,7 +168,11 @@ async def adduser(name: str, id: int, db: Session = Depends(get_db)):
 # ---------- AI Chat (dummy) ----------
 @app.post("/chatwithai")
 async def chatwithai(request: Request):
-    return "Not Yet Updated (Will Be Soon)"
+    body = await request.json()
+    user_prompt = body.get("content", "")
+    response_text = chat.send_message(user_prompt).text
+    
+    return JSONResponse(content={"content": response_text})
 
 # ---------- Logout ----------
 @app.get("/logout")
