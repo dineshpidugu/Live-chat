@@ -1,13 +1,13 @@
+from typing import List
 from dotenv import load_dotenv
 import os
-
 load_dotenv()
 
 from fastapi import Depends, FastAPI, Form, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
-from database import engine, get_db
+from database import engine, get_db, SessionLocal
 from model import User, Base,Chat
 from starlette.middleware.sessions import SessionMiddleware
 import redis.asyncio as redis
@@ -83,8 +83,7 @@ class ConnectionManager:
                 data = json.loads(message["data"])
                 await self.broadcast(data)
                 # messages.append(data)
-                loop = asyncio.get_running_loop()
-                await loop.run_in_executor(None, self.save_to_db, data)
+                
 
     def save_to_db(self, data: dict):
         db: Session = next(get_db())
@@ -113,6 +112,8 @@ async def websocket_endpoint(websocket: WebSocket, name: str):
             elif data.get("type") == "message":
                 await manager.set_typing(name, False)
                 await redis_client.publish(PUBSUB_CHANNEL, json.dumps(data))
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(None, manager.save_to_db, data)
 
     except WebSocketDisconnect:
         manager.disconnect(name)
@@ -181,7 +182,8 @@ def logout(request: Request):
     return RedirectResponse(url="/login", status_code=303)
 
 @app.get("/clear_chat", response_model=None)
-def clear_chat(db: Session = Depends(get_db)):
+def clear_chat():
+    db=SessionLocal()
     num_deleted = db.query(Chat).delete()
     db.commit()
     return {"message": f"Deleted {num_deleted} messages"}
