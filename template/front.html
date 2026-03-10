@@ -1018,26 +1018,56 @@ const membersList  = document.getElementById("members-list");
 const membersAvatars = document.getElementById("members-avatars");
 const memberCount  = document.getElementById("member-count");
 
-const ws = new WebSocket(
-    (window.location.protocol === "https:" ? "wss://" : "ws://") +
-    window.location.host + "/w/" + myUsername
-);
+let ws;
+let reconnectDelay = 1000;
 
-ws.onopen  = () => { headerStatus.textContent = "Connected"; };
-ws.onclose = () => { headerStatus.textContent = "Disconnected"; };
+function connectSocket() {
 
-ws.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    switch (data.type) {
-        case "message":        addMessage(data); break;
-        case "typing":         handleTyping(data.typing_users); break;
-        case "online_members": renderMembers(data.members); break;
-        case "Joined":
-        case "Left":
-            addNotification(`${data.name} ${data.type.toLowerCase()} the chat`);
-            break;
-    }
-};
+    ws = new WebSocket(
+        (window.location.protocol === "https:" ? "wss://" : "ws://") +
+        window.location.host + "/w/" + myUsername
+    );
+
+    ws.onopen = () => {
+        headerStatus.textContent = "Connected";
+        reconnectDelay = 1000;
+    };
+
+    ws.onclose = () => {
+        headerStatus.textContent = "Disconnected";
+        setTimeout(connectSocket, reconnectDelay);
+        reconnectDelay=Math.min(reconnectDelay*2,10000);
+    };
+
+    ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        switch (data.type) {
+            case "message":
+                addMessage(data);
+                break;
+
+            case "typing":
+                handleTyping(data.typing_users);
+                break;
+
+            case "online_members":
+                renderMembers(data.members);
+                break;
+
+            case "Joined":
+            case "Left":
+                addNotification(`${data.name} ${data.type.toLowerCase()} the chat`);
+                break;
+        }
+    };
+
+    ws.onerror = () => {
+        ws.close();
+    };
+}
+
+connectSocket();
 
 /* ── Members ── */
 let currentTypingUsers = [];

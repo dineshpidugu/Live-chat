@@ -18,8 +18,17 @@ from google import genai
 client = genai.Client()
 chat = client.chats.create(model="gemini-2.5-flash")
 
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("Starting Redis subscriber...")
+    asyncio.create_task(manager.redis_subscriber())
+    yield
+    print("Application shutting down")
+
 # ---------- FastAPI App ----------
-app = FastAPI()
+app = FastAPI(lifespan=lifespan)
 app.add_middleware(SessionMiddleware, secret_key="abcd")
 Base.metadata.create_all(bind=engine)
 templates = Jinja2Templates(directory="template")
@@ -193,7 +202,7 @@ def clear_chat():
 async def devtools_dummy():
     return JSONResponse(content={})
 
-# ---------- Startup Event ----------
-@app.on_event("startup")
-async def startup_event():
-    asyncio.create_task(manager.redis_subscriber())
+
+# @app.get("/create_room/{name}")
+# async def create_room(name:str):
+
