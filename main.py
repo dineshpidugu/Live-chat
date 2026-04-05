@@ -206,10 +206,6 @@ async def devtools_dummy():
 # @app.get("/create_room/{name}")
 # async def create_room(name:str):
 
-from fastapi import FastAPI
-
-app = FastAPI()
-
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
