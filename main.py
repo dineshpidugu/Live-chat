@@ -14,6 +14,7 @@ import redis.asyncio as redis
 import asyncio
 import json
 from google import genai
+from passlib.context import CryptContext
 
 client = genai.Client()
 chat = client.chats.create(model="gemini-2.5-flash")
@@ -30,6 +31,7 @@ async def lifespan(app: FastAPI):
 # ---------- FastAPI App ----------
 app = FastAPI(lifespan=lifespan)
 app.add_middleware(SessionMiddleware, secret_key="abcd")
+# Base.metadata.drop_all(bind=engine)
 Base.metadata.create_all(bind=engine)
 templates = Jinja2Templates(directory="template")
 
@@ -129,6 +131,13 @@ async def websocket_endpoint(websocket: WebSocket, name: str):
         await manager.broadcast({"type": "Left", "name": name})
         await manager.broadcast_members()
 
+pwd_context=CryptContext(schemes=["bcrypt"],deprecated="auto")
+
+def verify_password(password,hashed_password):
+    return pwd_context.verify(password,hashed_password)
+
+def hash_password(password: str):
+    return pwd_context.hash(password)
 # ---------- Login Pages ----------
 @app.get("/login")
 def login(request: Request, error: str = Query(None)):
@@ -137,11 +146,19 @@ def login(request: Request, error: str = Query(None)):
         return RedirectResponse(url="/", status_code=303)
     return templates.TemplateResponse("login.html", {"request": request, "error": error})
 
+
 @app.post("/login")
-def loginend(request: Request, id: int = Form(...), db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.id == id).first()
-    if not user:
+def loginend(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    user = db.query(User).filter(User.username == username).first()
+
+    if not user or not verify_password(password, user.password):
         return RedirectResponse(url="/login?error=User+not+found", status_code=303)
+
     request.session["user"] = user.name
     return RedirectResponse(url="/", status_code=303)
 
@@ -161,15 +178,17 @@ def get_front(request: Request,db: Session = Depends(get_db)):
             "messages": contents,
             "name": user
         })
+
+
 # ---------- Add User ----------
-@app.post("/adduser/{id}/{name}")
-async def adduser(name: str, id: int, db: Session = Depends(get_db)):
+@app.post("/adduser")
+async def adduser(name: str,username:str,password:str, db: Session = Depends(get_db)):
     if not name or not id:
         return JSONResponse(content={"error": "Name and ID required"}, status_code=400)
-    existing = db.query(User).filter(User.id == id).first()
+    existing = db.query(User).filter(User.username == username).first()
     if existing:
         return JSONResponse(content={"error": "User already exists"}, status_code=400)
-    new_user = User(name=name, id=id)
+    new_user = User(name=name,username=username,password=hash_password(password=password))
     db.add(new_user)
     db.commit()
     db.refresh(new_user)

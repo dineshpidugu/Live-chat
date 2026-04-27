@@ -8,6 +8,8 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String)
+    username=Column(String)
+    password=Column(String)
 class Room(Base):
     __tablename__="room"
 
