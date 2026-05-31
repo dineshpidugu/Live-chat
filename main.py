@@ -31,6 +31,7 @@ async def lifespan(app: FastAPI):
 # ---------- FastAPI App ----------
 app = FastAPI(lifespan=lifespan)
 app.add_middleware(SessionMiddleware, secret_key="abcd")
+Base.metadata.drop_all(bind=engine)
 Base.metadata.create_all(bind=engine)
 templates = Jinja2Templates(directory="template")
 
