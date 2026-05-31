@@ -14,9 +14,18 @@ class Room(Base):
     __tablename__="room"
 
     id=Column(Integer,primary_key=True,index=True)
+    roomname=Column(String)
+    # chatid=Column(Integer)
     password=Column(Integer)
 
 class Chat(Base):
-    __tablename__ = "chat"  # lowercase
+    __tablename__ = "chat"  
     id = Column(BigInteger, primary_key=True)
     content = Column(JSON)
+
+class UserRoom(Base):
+    __tablename__ ="userroom"
+
+    user_name = Column(Integer)
+    room_id = Column(Integer)
+    room_name = Column(String)
